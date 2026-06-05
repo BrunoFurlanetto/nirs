@@ -506,7 +506,9 @@ def build_design_matrix(n_samples, events, durations, fs=10.0, hrf_dt=0.1):
 
         # Downsample para fs
         step = int(1.0 / (fs * hrf_dt))
-        X[:, col] = convolved[::step][:n_samples]
+        downsampled = convolved[::step]
+        n = min(len(downsampled), n_samples)
+        X[:n, col] = downsampled[:n]
 
     # Constante de sessão
     X[:, -1] = 1.0

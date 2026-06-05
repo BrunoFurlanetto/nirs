@@ -69,7 +69,7 @@ with st.sidebar:
     st.divider()
     tmin = st.number_input("Época — início / baseline (s)", value=-20.0, step=1.0)
     post_margin = st.number_input(
-        "Margem pós-tarefa (s)", value=15.0, step=1.0,
+        "Margem pós-tarefa (s)", value=0.0, step=1.0,
         help="Segundos após o fim de cada tarefa para capturar a recuperação. "
              "A janela de cada condição = duração + esta margem.",
     )
@@ -225,7 +225,10 @@ if st.session_state.loaded:
     if "prev_oxy" in st.session_state:
         prev_oxy = st.session_state.prev_oxy
         prev_dxy = st.session_state.prev_dxy
-        t_full = np.arange(prev_oxy.shape[0]) / FS
+        skip = int(60 * FS)
+        prev_oxy = prev_oxy[skip:]
+        prev_dxy = prev_dxy[skip:]
+        t_full = np.arange(prev_oxy.shape[0]) / FS + 60
 
         ncols = 4
         rows_ch = [list(range(n_ch))[i:i + ncols] for i in range(0, n_ch, ncols)]
