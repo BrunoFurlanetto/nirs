@@ -67,6 +67,13 @@ with st.sidebar:
         "Nível de decomposição", min_value=1, max_value=8, value=4
     )
     st.divider()
+    mapeamento_file = st.file_uploader(
+        "Mapeamento de condições (CSV)",
+        type=["csv"],
+        help="CSV com colunas arquivo;condicao;label — renomeia condições por arquivo. "
+             "O campo 'arquivo' deve bater com o nome do .nirs carregado.",
+    )
+    st.divider()
     tmin = st.number_input("Época — início / baseline (s)", value=-20.0, step=1.0)
     post_margin = st.number_input(
         "Margem pós-tarefa (s)", value=0.0, step=1.0,
@@ -92,15 +99,53 @@ if uploaded is not None:
         try:
             rec = load_nirs(tmp_path)
             st.session_state.rec = rec
-            st.session_state.events = rec["events"]
+            st.session_state.raw_events = dict(rec["events"])   # cópia sem mapeamento
             st.session_state.n_ch = rec["n_ch"]
             st.session_state.filename = uploaded.name
+            st.session_state.tmp_path = tmp_path
             st.session_state.distances = compute_channel_distances(tmp_path)
             st.session_state.dpf_from_file = read_dpf_from_nirs(tmp_path)
             st.session_state.loaded = True
         except Exception as e:
             st.error(f"Erro ao carregar o arquivo: {e}")
             st.session_state.loaded = False
+
+    # Mapeamento aplicado a cada rerun (garante que tabela atualiza ao trocar CSV)
+    if st.session_state.get("loaded"):
+        import pandas as _pd
+        raw_ev = dict(st.session_state.raw_events)
+        mapped_ev = raw_ev
+
+        if mapeamento_file is not None:
+            mdf = _pd.read_csv(mapeamento_file, sep=";", dtype=str)
+            mapeamento_file.seek(0)
+            arquivo_rows = mdf[mdf["arquivo"] == uploaded.name]
+            if not arquivo_rows.empty:
+                if "ocorrencia" in mdf.columns:
+                    mapa = {(r["condicao"], r["ocorrencia"]): r["label"]
+                            for _, r in arquivo_rows.iterrows()}
+                    new_ev: dict = {}
+                    for cond, onsets in raw_ev.items():
+                        for i, onset in enumerate(sorted(onsets), 1):
+                            label = mapa.get((cond, str(i)), cond)
+                            new_ev.setdefault(label, []).append(onset)
+                    mapped_ev = new_ev
+                else:
+                    mapa = {r["condicao"]: r["label"]
+                            for _, r in arquivo_rows.iterrows()}
+                    mapped_ev = {mapa.get(k, k): v for k, v in raw_ev.items()}
+
+        st.session_state.rec["events"] = mapped_ev
+        st.session_state.events = mapped_ev
+
+if st.session_state.loaded:
+    if st.button("🏷️ Editar mapeamento de condições",
+                 help="Abre o editor visual para renomear condições deste arquivo"):
+        import subprocess, sys as _sys
+        editor = os.path.join(os.path.dirname(__file__), "editor_mapeamento.py")
+        subprocess.Popen([_sys.executable, editor,
+                          "--arquivo", st.session_state.tmp_path,
+                          "--nome", st.session_state.filename])
 
 if st.session_state.loaded:
     rec = st.session_state.rec
