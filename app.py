@@ -230,6 +230,17 @@ if st.session_state.loaded:
         prev_dxy = prev_dxy[skip:]
         t_full = np.arange(prev_oxy.shape[0]) / FS + 60
 
+        shared_scale = st.checkbox("Mesma escala em todos os canais", value=False)
+        if shared_scale:
+            all_vals = np.concatenate([prev_oxy, prev_dxy])
+            _pad = (np.nanmax(all_vals) - np.nanmin(all_vals)) * 0.05
+            ylim = (np.nanmin(all_vals) - _pad, np.nanmax(all_vals) + _pad)
+        else:
+            ylim = None
+
+        cond_colors = plt.cm.tab10.colors
+        cond_list = list(events.items())
+
         ncols = 4
         rows_ch = [list(range(n_ch))[i:i + ncols] for i in range(0, n_ch, ncols)]
         for row_chs in rows_ch:
@@ -238,6 +249,17 @@ if st.session_state.loaded:
                 fig, ax = plt.subplots(figsize=(4, 2.4))
                 ax.plot(t_full, prev_oxy[:, ch], color="#d62728", linewidth=0.4, label="HbO")
                 ax.plot(t_full, prev_dxy[:, ch], color="#1f77b4", linewidth=0.4, label="HbR")
+                if ylim:
+                    ax.set_ylim(ylim)
+                xform = ax.get_xaxis_transform()
+                for ci, (cond_name, onsets) in enumerate(cond_list):
+                    color = cond_colors[ci % len(cond_colors)]
+                    label_ch = cond_name[0] if cond_name else "?"
+                    for onset in onsets:
+                        if onset >= 60:
+                            ax.axvline(onset, color=color, linewidth=0.6, alpha=0.7)
+                            ax.text(onset, 0.98, label_ch, fontsize=5, color=color,
+                                    ha="center", va="top", transform=xform, clip_on=True)
                 ax.set_title(ch_labels[ch], fontsize=9)
                 ax.set_xlabel("Tempo (s)", fontsize=7)
                 ax.set_ylabel("µM", fontsize=7)
@@ -473,6 +495,34 @@ if st.session_state.loaded:
                 "HRF por canal (.csv)",
                 df_channel.to_csv(index=False, sep=";").encode("utf-8"),
                 file_name=f"{os.path.splitext(uploaded.name)[0]}_hrf_canais.csv",
+                mime="text/csv",
+            )
+
+        # CSV de janelas individuais (trials) — uma linha por ponto de tempo por trial
+        epoch_rows = []
+        for cond in conditions:
+            if cond not in epochs_oxy or "epochs" not in epochs_oxy[cond]:
+                continue
+            times_ep = epochs_oxy[cond]["times"]
+            ep_oxy   = epochs_oxy[cond]["epochs"]   # lista de arrays (tempo × canais)
+            ep_dxy   = epochs_dxy[cond]["epochs"]
+            ch_names = [kept_labels[i].split(" ")[0] if i < len(kept_labels)
+                        else f"Ch{i+1}" for i in range(ep_oxy[0].shape[1])]
+            for trial_idx, (eo, ed) in enumerate(zip(ep_oxy, ep_dxy)):
+                for ti, t_val in enumerate(times_ep):
+                    row = {"Condicao": cond, "Trial": trial_idx + 1,
+                           "Tempo_s": round(float(t_val), 2)}
+                    for ci, ch in enumerate(ch_names):
+                        row[f"{ch}_HbO"] = float(eo[ti, ci])
+                        row[f"{ch}_HbR"] = float(ed[ti, ci])
+                    epoch_rows.append(row)
+
+        if epoch_rows:
+            df_epochs = pd.DataFrame(epoch_rows)
+            st.download_button(
+                "HRF janelas individuais / trials (.csv)",
+                df_epochs.to_csv(index=False, sep=";").encode("utf-8"),
+                file_name=f"{os.path.splitext(uploaded.name)[0]}_hrf_trials.csv",
                 mime="text/csv",
             )
 

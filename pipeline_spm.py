@@ -589,6 +589,7 @@ def extract_epochs(signal, events, tmin=-20, tmax=60, fs=10.0, baseline=(-2, 0),
                 'sem': np.std(epochs, axis=0) / np.sqrt(len(epochs)) if len(epochs) > 1 else np.zeros_like(epochs[0]),
                 'n': len(epochs),
                 'times': times,
+                'epochs': epochs,  # lista de arrays (tempo × canais), um por trial
             }
 
     return epochs_data
