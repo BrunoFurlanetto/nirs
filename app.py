@@ -127,8 +127,9 @@ if uploaded is not None:
                     new_ev: dict = {}
                     for cond, onsets in raw_ev.items():
                         for i, onset in enumerate(sorted(onsets), 1):
-                            label = mapa.get((cond, str(i)), cond)
-                            new_ev.setdefault(label, []).append(onset)
+                            label = mapa.get((cond, str(i)))
+                            if label is not None:
+                                new_ev.setdefault(label, []).append(onset)
                     mapped_ev = new_ev
                 else:
                     mapa = {r["condicao"]: r["label"]

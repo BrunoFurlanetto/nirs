@@ -1,0 +1,17 @@
+arquivo;condicao;ocorrencia;label
+dp297_pre.nirs;S;1;S_2min
+dp297_pre.nirs;D;1;D_2min
+dp297_pre.nirs;D;2;D_andar
+dp297_pre.nirs;S;2;S_andar
+dp297_pre.nirs;D;3;D_andar
+dp297_pre.nirs;D;4;D_andar
+dp297_pre.nirs;B;1;Baseline
+dp297_pre.nirs;S;3;S_postura
+dp297_pre.nirs;F;1;F
+dp297_pre.nirs;I;1;I
+dp297_pre.nirs;B;2;B_postura
+dp297_pre.nirs;S;4;S_postura
+dp297_pre.nirs;D;5;D_postura
+dp297_pre.nirs;D;6;D_postura
+dp297_pre.nirs;D;7;D_postura
+dp297_pre.nirs;S;5;S_postura

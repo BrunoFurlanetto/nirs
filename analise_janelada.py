@@ -74,8 +74,8 @@ def process_file_condition(df: pd.DataFrame, condition: str, filename: str) -> d
         print(f"  [AVISO] {filename} / {condition}: baseline vazio após corte de 5s", file=sys.stderr)
         return None
 
-    baseline_hbo = float(bl[hbo].values.mean())
-    baseline_hbr = float(bl[hbr].values.mean())
+    baseline_hbo = float(np.nanmean(bl[hbo].values))
+    baseline_hbr = float(np.nanmean(bl[hbr].values))
 
     # Tarefa: Tempo_s >= 0, excluindo os primeiros 5s (Tempo_s >= 5)
     task = sub[sub["Tempo_s"] >= 5]
@@ -88,8 +88,8 @@ def process_file_condition(df: pd.DataFrame, condition: str, filename: str) -> d
     n_windows = max(1, math.ceil(task_duration / 30))
 
     # Média geral de todos os canais por ponto de tempo → série 1D
-    hbo_series = task[hbo].values.mean(axis=1)
-    hbr_series = task[hbr].values.mean(axis=1)
+    hbo_series = np.nanmean(task[hbo].values, axis=1)
+    hbr_series = np.nanmean(task[hbr].values, axis=1)
 
     hbo_wins, win_size = window_means(hbo_series, task_times, n_windows)
     hbr_wins, _ = window_means(hbr_series, task_times, n_windows)
@@ -132,6 +132,9 @@ def main():
         except Exception as e:
             print(f"  [ERRO] Falha ao ler {csv_path.name}: {e}", file=sys.stderr)
             continue
+
+        for col in hbo_cols(df) + hbr_cols(df):
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
         if "Condicao" not in df.columns or "Tempo_s" not in df.columns:
             print(f"  [AVISO] {csv_path.name}: colunas 'Condicao'/'Tempo_s' ausentes — pulando",
