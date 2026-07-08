@@ -538,17 +538,22 @@ def glm_residuals(signal, X):
 # ── 6. Extração de épocas ─────────────────────────────────────────────────────
 
 def extract_epochs(signal, events, tmin=-20, tmax=60, fs=10.0, baseline=(-2, 0),
-                   durations=None, post_margin=15.0):
+                   durations=None, post_margin=15.0,
+                   tmin_per_cond=None, baseline_per_cond=None):
     """
     Extrai e faz média das épocas por condição com baseline correction.
 
     Parâmetros:
-      tmax        — fim da janela (s). Usado se durations=None ou condição ausente.
-      durations   — dict {condição: duração_s}. Se fornecido, a janela de cada
-                    condição vai de tmin até (duração + post_margin), respeitando
-                    o tempo individual de cada tarefa.
-      post_margin — segundos adicionais após o fim da tarefa, para capturar a
-                    recuperação hemodinâmica (padrão 15s).
+      tmax             — fim da janela (s). Usado se durations=None ou condição ausente.
+      durations        — dict {condição: duração_s}. Se fornecido, a janela de cada
+                         condição vai de tmin até (duração + post_margin), respeitando
+                         o tempo individual de cada tarefa.
+      post_margin      — segundos adicionais após o fim da tarefa, para capturar a
+                         recuperação hemodinâmica (padrão 15s).
+      tmin_per_cond    — dict {condição: tmin_s} opcional. Sobrescreve tmin global
+                         para condições específicas.
+      baseline_per_cond — dict {condição: (bl_start, bl_end)} opcional. Sobrescreve
+                          baseline global para condições específicas.
 
     Retorna:
       (epochs_data, adjustments)
@@ -561,18 +566,22 @@ def extract_epochs(signal, events, tmin=-20, tmax=60, fs=10.0, baseline=(-2, 0),
     n_sig = len(signal)
 
     for cond_name, onsets in events.items():
+        # Resolver tmin e baseline desta condição
+        cond_tmin = tmin_per_cond.get(cond_name, tmin) if tmin_per_cond else tmin
+        cond_baseline = baseline_per_cond.get(cond_name, baseline) if baseline_per_cond else baseline
+
         # Determinar tmax desta condição
         if durations is not None and cond_name in durations:
             cond_tmax = float(durations[cond_name]) + post_margin
         else:
             cond_tmax = tmax
 
-        n_pre = int(round(abs(tmin) * fs))
+        n_pre = int(round(abs(cond_tmin) * fs))
         n_post = int(round(cond_tmax * fs))
         n_samples_epoch = n_pre + n_post
         # Grid de tempo a partir da taxa de amostragem (passo fixo = 1/fs),
         # evita decimais imprecisos do linspace (ex: -19.399 em vez de -19.4)
-        times = tmin + np.arange(n_samples_epoch) / fs
+        times = cond_tmin + np.arange(n_samples_epoch) / fs
 
         epochs = []
         cond_adj = []
@@ -595,7 +604,7 @@ def extract_epochs(signal, events, tmin=-20, tmax=60, fs=10.0, baseline=(-2, 0),
             adj = {}
             if pad_before > 0:
                 epoch = np.pad(epoch, ((pad_before, 0), (0, 0)), mode='constant')
-                adj['tmin_requested'] = tmin
+                adj['tmin_requested'] = cond_tmin
                 adj['tmin_used'] = round(-(i_onset / fs), 3)
             if pad_after > 0:
                 epoch = np.pad(epoch, ((0, pad_after), (0, 0)), mode='constant')
@@ -607,8 +616,8 @@ def extract_epochs(signal, events, tmin=-20, tmax=60, fs=10.0, baseline=(-2, 0),
                 cond_adj.append(adj)
 
             # Baseline correction
-            bl_s = int((baseline[0] - tmin) * fs)
-            bl_e = int((baseline[1] - tmin) * fs)
+            bl_s = int((cond_baseline[0] - cond_tmin) * fs)
+            bl_e = int((cond_baseline[1] - cond_tmin) * fs)
             if bl_e > bl_s:
                 bl_mean = np.mean(epoch[bl_s:bl_e, :], axis=0, keepdims=True)
                 epoch = epoch - bl_mean

@@ -354,6 +354,9 @@ if st.session_state.loaded:
         "Condição": list(events.keys()),
         "N trials": [n_trials_por_cond[k] for k in events.keys()],
         "Duração (s)": [60.0] * len(events),
+        "Início época (s)": [float(tmin)] * len(events),
+        "Baseline início (s)": [float(bl_start)] * len(events),
+        "Baseline fim (s)": [float(bl_end)] * len(events),
     })
 
     df_edit = st.data_editor(
@@ -364,12 +367,29 @@ if st.session_state.loaded:
             "Duração (s)": st.column_config.NumberColumn(
                 min_value=1.0, max_value=900.0, step=1.0
             ),
+            "Início época (s)": st.column_config.NumberColumn(
+                min_value=-300.0, max_value=0.0, step=0.5,
+                help="Início da janela de época relativo ao onset (negativo = antes do evento)"
+            ),
+            "Baseline início (s)": st.column_config.NumberColumn(
+                min_value=-300.0, max_value=0.0, step=0.5,
+                help="Início da janela de baseline para correção"
+            ),
+            "Baseline fim (s)": st.column_config.NumberColumn(
+                min_value=-300.0, max_value=300.0, step=0.5,
+                help="Fim da janela de baseline para correção"
+            ),
         },
         hide_index=True,
         use_container_width=True,
     )
 
     durations = dict(zip(df_edit["Condição"], df_edit["Duração (s)"]))
+    tmin_per_cond = dict(zip(df_edit["Condição"], df_edit["Início época (s)"]))
+    baseline_per_cond = {
+        cond: (row["Baseline início (s)"], row["Baseline fim (s)"])
+        for cond, row in df_edit.set_index("Condição").iterrows()
+    }
 
     # ── Rodar ──────────────────────────────────────────────────────────────────
     sec_run = "5" if rec["mode"] == "intensity" else "4"
@@ -430,11 +450,13 @@ if st.session_state.loaded:
             sig_oxy_for_hrf, events, tmin=tmin, fs=FS,
             baseline=(bl_start, bl_end),
             durations=durations, post_margin=post_margin,
+            tmin_per_cond=tmin_per_cond, baseline_per_cond=baseline_per_cond,
         )
         epochs_dxy, adj_dxy = extract_epochs(
             sig_dxy_for_hrf, events, tmin=tmin, fs=FS,
             baseline=(bl_start, bl_end),
             durations=durations, post_margin=post_margin,
+            tmin_per_cond=tmin_per_cond, baseline_per_cond=baseline_per_cond,
         )
 
         progress.progress(100, text="Concluído!")
