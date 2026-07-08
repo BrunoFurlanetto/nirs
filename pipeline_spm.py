@@ -31,6 +31,7 @@ import matplotlib.pyplot as plt
 import pywt
 from scipy.linalg import lstsq
 from scipy.special import gamma
+from scipy.signal import butter, filtfilt
 
 
 # ── Configurações padrão (fiéis ao descritivo dp382) ──────────────────────────
@@ -372,6 +373,47 @@ def compute_channel_distances(path):
             results.append((f"S{si+1}-D{di+1}", dist_mm, unit))
 
     return results
+
+
+# ── SCI ───────────────────────────────────────────────────────────────────────
+
+def compute_sci(intensity, measlist, fs=FS, cardiac_band=(0.5, 2.5)):
+    """
+    Scalp Coupling Index (Pollonini et al., 2014) por canal.
+
+    Correlação de Pearson entre os dois comprimentos de onda de cada canal
+    filtrados na banda cardíaca (padrão 0.5–2.5 Hz).
+
+    Parâmetros:
+      intensity    — (amostras × colunas) sinal bruto de intensidade
+      measlist     — SD.MeasList do arquivo .nirs
+      fs           — taxa de amostragem
+      cardiac_band — (f_low, f_high) da banda cardíaca em Hz
+
+    Retorna array (n_ch,) com SCI ∈ [-1, 1]. NaN para canais sem dois λ.
+    """
+    nyq = fs / 2.0
+    b, a = butter(4, [cardiac_band[0] / nyq, cardiac_band[1] / nyq], btype='band')
+
+    mean_int = np.mean(intensity, axis=0, keepdims=True)
+    mean_int[mean_int <= 0] = 1e-12
+    od = -np.log(intensity / mean_int)
+
+    pairs = {}
+    for col, row in enumerate(measlist):
+        src, det, _, wl_idx = int(row[0]), int(row[1]), int(row[2]), int(row[3])
+        pairs.setdefault((src, det), {})[wl_idx] = col
+
+    sci = np.full(len(pairs), np.nan)
+    for ch_idx, wl_cols in enumerate(pairs.values()):
+        if len(wl_cols) < 2:
+            continue
+        sorted_cols = [col for _, col in sorted(wl_cols.items())]
+        sig1 = filtfilt(b, a, od[:, sorted_cols[0]])
+        sig2 = filtfilt(b, a, od[:, sorted_cols[1]])
+        sci[ch_idx] = float(np.corrcoef(sig1, sig2)[0, 1])
+
+    return sci
 
 
 # ── 2. Baseline "initial time" ────────────────────────────────────────────────

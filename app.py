@@ -28,6 +28,7 @@ import streamlit as st
 from pipeline_spm import (
     load_nirs,
     compute_channel_distances,
+    compute_sci,
     intensity_to_concentration,
     dpf_scholkmann,
     read_dpf_from_nirs,
@@ -105,6 +106,10 @@ if uploaded is not None:
             st.session_state.tmp_path = tmp_path
             st.session_state.distances = compute_channel_distances(tmp_path)
             st.session_state.dpf_from_file = read_dpf_from_nirs(tmp_path)
+            if rec["mode"] == "intensity":
+                st.session_state.sci = compute_sci(rec["intensity"], rec["measlist"])
+            else:
+                st.session_state.sci = None
             st.session_state.loaded = True
         except Exception as e:
             st.error(f"Erro ao carregar o arquivo: {e}")
@@ -319,14 +324,37 @@ if st.session_state.loaded:
                 plt.close(fig)
 
     # Tabela de exclusão
+    sci_vals = st.session_state.get("sci")
+    SCI_THRESHOLD = 0.7
+
+    def _sci_label(v):
+        if v is None or np.isnan(v):
+            return "—"
+        return "🔴 Baixo" if v < SCI_THRESHOLD else "🟢 OK"
+
     df_ch = pd.DataFrame({
         "Canal": ch_labels,
+        "SCI": [round(float(sci_vals[i]), 3) if sci_vals is not None and i < len(sci_vals) and not np.isnan(sci_vals[i]) else None
+                for i in range(n_ch)],
+        "Qualidade": [_sci_label(sci_vals[i] if sci_vals is not None and i < len(sci_vals) else None)
+                      for i in range(n_ch)],
         "Excluir": [False] * n_ch,
     })
     df_ch_edit = st.data_editor(
         df_ch,
         column_config={
             "Canal": st.column_config.TextColumn(disabled=True),
+            "SCI": st.column_config.NumberColumn(
+                "SCI",
+                disabled=True,
+                format="%.3f",
+                help="Scalp Coupling Index — correlação entre λ1 e λ2 na banda cardíaca (0.5–2.5 Hz). "
+                     "Limiar recomendado: ≥ 0.7. N/D para arquivos sem intensidade bruta.",
+            ),
+            "Qualidade": st.column_config.TextColumn(
+                "Qualidade SCI", disabled=True,
+                help="🔴 Baixo = SCI < 0.7 (acoplamento ruim). 🟢 OK = SCI ≥ 0.7.",
+            ),
             "Excluir": st.column_config.CheckboxColumn(
                 "Excluir", help="Marque para remover este canal de toda a análise"
             ),
