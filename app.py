@@ -271,14 +271,18 @@ if st.session_state.loaded:
     if "prev_oxy" in st.session_state:
         prev_oxy = st.session_state.prev_oxy
         prev_dxy = st.session_state.prev_dxy
-        skip = int(60 * FS)
-        prev_oxy = prev_oxy[skip:]
-        prev_dxy = prev_dxy[skip:]
-        t_full = np.arange(prev_oxy.shape[0]) / FS + 60
+        t_full = np.arange(prev_oxy.shape[0]) / FS
+
+        # Remover primeiros 10s (calibração do equipamento) apenas da visualização
+        calib_n = int(10 * FS)
+        vis_oxy = prev_oxy[calib_n:, :]
+        vis_dxy = prev_dxy[calib_n:, :]
+        t_vis = t_full[calib_n:]
+        st.caption("ℹ Os primeiros 10 s (calibração do equipamento) estão ocultos nos gráficos abaixo.")
 
         shared_scale = st.checkbox("Mesma escala em todos os canais", value=False)
         if shared_scale:
-            all_vals = np.concatenate([prev_oxy, prev_dxy])
+            all_vals = np.concatenate([vis_oxy, vis_dxy])
             _pad = (np.nanmax(all_vals) - np.nanmin(all_vals)) * 0.05
             ylim = (np.nanmin(all_vals) - _pad, np.nanmax(all_vals) + _pad)
         else:
@@ -293,8 +297,8 @@ if st.session_state.loaded:
             cols = st.columns(ncols)
             for cwidget, ch in zip(cols, row_chs):
                 fig, ax = plt.subplots(figsize=(4, 2.4))
-                ax.plot(t_full, prev_oxy[:, ch], color="#d62728", linewidth=0.4, label="HbO")
-                ax.plot(t_full, prev_dxy[:, ch], color="#1f77b4", linewidth=0.4, label="HbR")
+                ax.plot(t_vis, vis_oxy[:, ch], color="#d62728", linewidth=0.4, label="HbO")
+                ax.plot(t_vis, vis_dxy[:, ch], color="#1f77b4", linewidth=0.4, label="HbR")
                 if ylim:
                     ax.set_ylim(ylim)
                 xform = ax.get_xaxis_transform()
@@ -302,10 +306,9 @@ if st.session_state.loaded:
                     color = cond_colors[ci % len(cond_colors)]
                     label_ch = cond_name[0] if cond_name else "?"
                     for onset in onsets:
-                        if onset >= 60:
-                            ax.axvline(onset, color=color, linewidth=0.6, alpha=0.7)
-                            ax.text(onset, 0.98, label_ch, fontsize=5, color=color,
-                                    ha="center", va="top", transform=xform, clip_on=True)
+                        ax.axvline(onset, color=color, linewidth=0.6, alpha=0.7)
+                        ax.text(onset, 0.98, label_ch, fontsize=5, color=color,
+                                ha="center", va="top", transform=xform, clip_on=True)
                 ax.set_title(ch_labels[ch], fontsize=9)
                 ax.set_xlabel("Tempo (s)", fontsize=7)
                 ax.set_ylabel("µM", fontsize=7)
@@ -423,18 +426,39 @@ if st.session_state.loaded:
 
         # Épocas
         progress.progress(80, text="Extraindo épocas (sinal pós-wavelet)...")
-        epochs_oxy = extract_epochs(
+        epochs_oxy, adj_oxy = extract_epochs(
             sig_oxy_for_hrf, events, tmin=tmin, fs=FS,
             baseline=(bl_start, bl_end),
             durations=durations, post_margin=post_margin,
         )
-        epochs_dxy = extract_epochs(
+        epochs_dxy, adj_dxy = extract_epochs(
             sig_dxy_for_hrf, events, tmin=tmin, fs=FS,
             baseline=(bl_start, bl_end),
             durations=durations, post_margin=post_margin,
         )
 
         progress.progress(100, text="Concluído!")
+
+        # Avisos de ajuste de janela
+        all_adj = {}
+        for cond, trials in {**adj_oxy, **adj_dxy}.items():
+            all_adj.setdefault(cond, trials)
+        for cond, trials in all_adj.items():
+            for t in trials:
+                msgs = []
+                if 'tmin_used' in t:
+                    msgs.append(
+                        f"pré-evento: **{t['tmin_requested']:.1f}s** → **{t['tmin_used']:.1f}s**"
+                    )
+                if 'tmax_used' in t:
+                    msgs.append(
+                        f"pós-evento: **{t['tmax_requested']:.1f}s** → **{t['tmax_used']:.1f}s**"
+                    )
+                st.warning(
+                    f"⚠ **{cond}** (trial {t['trial']}): janela ajustada por sinal insuficiente — "
+                    + ", ".join(msgs),
+                    icon=None,
+                )
 
         # ── Resumo ────────────────────────────────────────────────────────────
         st.success("Pipeline concluída.")

@@ -549,8 +549,17 @@ def extract_epochs(signal, events, tmin=-20, tmax=60, fs=10.0, baseline=(-2, 0),
                     o tempo individual de cada tarefa.
       post_margin — segundos adicionais após o fim da tarefa, para capturar a
                     recuperação hemodinâmica (padrão 15s).
+
+    Retorna:
+      (epochs_data, adjustments)
+      adjustments — dict {cond: [{trial, tmin_requested, tmin_used,
+                                   tmax_requested, tmax_used}, ...]}
+                    presente apenas para trials com janela recortada.
     """
     epochs_data = {}
+    adjustments = {}
+    n_sig = len(signal)
+
     for cond_name, onsets in events.items():
         # Determinar tmax desta condição
         if durations is not None and cond_name in durations:
@@ -566,13 +575,36 @@ def extract_epochs(signal, events, tmin=-20, tmax=60, fs=10.0, baseline=(-2, 0),
         times = tmin + np.arange(n_samples_epoch) / fs
 
         epochs = []
-        for onset in onsets:
+        cond_adj = []
+
+        for trial_idx, onset in enumerate(onsets):
             i_onset = int(onset * fs)
             start = i_onset - n_pre
             end = i_onset + n_post
-            if start < 0 or end > len(signal):
+
+            pad_before = max(0, -start)
+            pad_after = max(0, end - n_sig)
+            clipped_start = max(0, start)
+            clipped_end = min(n_sig, end)
+
+            if clipped_start >= clipped_end:
                 continue
-            epoch = signal[start:end, :]
+
+            epoch = signal[clipped_start:clipped_end, :]
+
+            adj = {}
+            if pad_before > 0:
+                epoch = np.pad(epoch, ((pad_before, 0), (0, 0)), mode='constant')
+                adj['tmin_requested'] = tmin
+                adj['tmin_used'] = round(-(i_onset / fs), 3)
+            if pad_after > 0:
+                epoch = np.pad(epoch, ((0, pad_after), (0, 0)), mode='constant')
+                adj['tmax_requested'] = cond_tmax
+                adj['tmax_used'] = round((n_sig - i_onset) / fs, 3)
+
+            if adj:
+                adj['trial'] = trial_idx + 1
+                cond_adj.append(adj)
 
             # Baseline correction
             bl_s = int((baseline[0] - tmin) * fs)
@@ -583,6 +615,9 @@ def extract_epochs(signal, events, tmin=-20, tmax=60, fs=10.0, baseline=(-2, 0),
 
             epochs.append(epoch)
 
+        if cond_adj:
+            adjustments[cond_name] = cond_adj
+
         if epochs:
             epochs_data[cond_name] = {
                 'mean': np.mean(epochs, axis=0),
@@ -592,7 +627,7 @@ def extract_epochs(signal, events, tmin=-20, tmax=60, fs=10.0, baseline=(-2, 0),
                 'epochs': epochs,  # lista de arrays (tempo × canais), um por trial
             }
 
-    return epochs_data
+    return epochs_data, adjustments
 
 
 # ── 7. Plots ──────────────────────────────────────────────────────────────────
@@ -764,10 +799,20 @@ def main():
 
     # ── Etapa 6: Extração de épocas e plots ─────────────────────
     print(f"\n[6/6] Extraindo épocas e gerando gráficos...")
-    epochs_oxy = extract_epochs(oxy_final, events,
-                                tmin=args.tmin, tmax=args.tmax_epoch, fs=FS)
-    epochs_dxy = extract_epochs(dxy_final, events,
-                                tmin=args.tmin, tmax=args.tmax_epoch, fs=FS)
+    epochs_oxy, adj_oxy = extract_epochs(oxy_final, events,
+                                         tmin=args.tmin, tmax=args.tmax_epoch, fs=FS)
+    epochs_dxy, adj_dxy = extract_epochs(dxy_final, events,
+                                         tmin=args.tmin, tmax=args.tmax_epoch, fs=FS)
+
+    all_adj = {**adj_oxy, **adj_dxy}
+    for cond, trials in all_adj.items():
+        for t in trials:
+            msgs = []
+            if 'tmin_used' in t:
+                msgs.append(f"pré-evento: {t['tmin_requested']:.1f}s → {t['tmin_used']:.1f}s")
+            if 'tmax_used' in t:
+                msgs.append(f"pós-evento: {t['tmax_requested']:.1f}s → {t['tmax_used']:.1f}s")
+            print(f"  ⚠ Ajuste de janela — {cond} (trial {t['trial']}): {', '.join(msgs)}")
 
     # Salvar plots
     hrf_path = os.path.join(args.output_dir, f'{participant_id}_hrf.png')
