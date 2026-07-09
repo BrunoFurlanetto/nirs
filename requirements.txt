@@ -3,7 +3,7 @@ asgiref==3.4.1
 asn1crypto==1.5.1
 Brotli==1.0.9
 certifi==2022.12.7
-cffi==1.15.1
+cffi>=1.17.1
 charset-normalizer==3.0.1
 click==8.1.6
 colorama==0.4.6
