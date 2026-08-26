@@ -5,3 +5,4 @@ PyWavelets
 scipy
 streamlit
 plotly
+streamlit-sortables
