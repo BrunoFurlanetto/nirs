@@ -164,26 +164,57 @@ def _section_preview(res_raw: core.MergeResult,
         key=f"{key}_preview_col",
     )
 
+    EVENT_PALETTE = ["#38a169", "#805ad5", "#d69e2e", "#0987a0",
+                     "#d53f8c", "#c05621", "#2f855a", "#4a5568"]
+
     t = res_raw.t[:, 0]
+    y = res_final.d[:, col]
+    y_min, y_max = float(np.nanmin(y)), float(np.nanmax(y))
+
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
-        x=t, y=res_final.d[:, col], name="sinal concatenado",
+        x=t, y=y, name="sinal concatenado",
         line=dict(width=1.1, color="#2b6cb0"),
     ))
+
+    # Eventos — um trace por condição, None como separador de segmentos
+    if res_final.s.size > 0:
+        for i, name in enumerate(res_final.cond_names):
+            idx = np.where(res_final.s[:, i] > 0)[0]
+            if not idx.size:
+                continue
+            color = EVENT_PALETTE[i % len(EVENT_PALETTE)]
+            xs, ys = [], []
+            for sample in idx:
+                x_ev = float(t[sample]) if sample < len(t) else sample / res_final.fs
+                xs.extend([x_ev, x_ev, None])
+                ys.extend([y_min, y_max, None])
+            fig.add_trace(go.Scatter(
+                x=xs, y=ys, mode="lines", name=name,
+                line=dict(width=1.0, color=color),
+                hoverinfo="skip",
+            ))
 
     for jt in res_raw.joint_times:
         fig.add_vline(x=jt, line_dash="dash", line_color="#e53e3e", line_width=1)
 
+    has_events = res_final.s.size > 0 and any(
+        np.where(res_final.s[:, i] > 0)[0].size for i in range(res_final.s.shape[1])
+    )
     fig.update_layout(
         height=340,
         margin=dict(l=10, r=10, t=30, b=10),
         xaxis_title="Tempo (s)",
         yaxis_title="Intensidade",
-        showlegend=False,
+        showlegend=has_events,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10)),
     )
     st.plotly_chart(fig, width="stretch")
-    st.caption("Linhas vermelhas tracejadas marcam as emendas.")
+    cap = "Linhas vermelhas tracejadas marcam as emendas."
+    if has_events:
+        cap += " Linhas coloridas marcam os eventos, uma cor por condição."
+    st.caption(cap)
 
 
 # --------------------------------------------------------------------------
