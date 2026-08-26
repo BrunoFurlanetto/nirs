@@ -94,7 +94,7 @@ def _section_order(files: list[core.NirsFile], key: str) -> list[core.NirsFile]:
     if set(stored) != set(default_labels):
         stored = default_labels
 
-    ordered_labels: list[str] = sort_items(stored, key=f"{key}_order")
+    ordered_labels: list[str] = sort_items(stored, direction="vertical", key=f"{key}_order")
     st.session_state[ss_key] = ordered_labels
 
     by_name = {f.name: f for f in files}
