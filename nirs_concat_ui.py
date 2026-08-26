@@ -76,25 +76,28 @@ def _section_order(files: list[core.NirsFile], key: str) -> list[core.NirsFile]:
     st.markdown("**Ordem de gravação**")
     st.caption(
         "O eixo de tempo do arquivo final é reconstruído nesta ordem. "
-        "Não dá para inferir a ordem correta a partir do conteúdo — confira antes de juntar."
+        "Arraste os itens para definir a sequência correta antes de juntar."
     )
 
-    default = sorted(range(len(files)), key=lambda i: _natural_key(files[i].name))
-    labels = [files[i].name for i in default]
+    try:
+        from streamlit_sortables import sort_items
+    except ImportError:
+        st.warning("Instale `streamlit-sortables` para arrastar e reordenar.")
+        return files
 
-    ordered_labels = st.multiselect(
-        "Arraste para reordenar (todos os arquivos precisam estar na lista)",
-        options=labels,
-        default=labels,
-        key=f"{key}_order",
-    )
+    default_order = sorted(range(len(files)), key=lambda i: _natural_key(files[i].name))
+    default_labels = [files[i].name for i in default_order]
+
+    # Persist order across reruns; reset if file set changes.
+    ss_key = f"{key}_order_list"
+    stored: list[str] = st.session_state.get(ss_key, [])
+    if set(stored) != set(default_labels):
+        stored = default_labels
+
+    ordered_labels: list[str] = sort_items(stored, direction="vertical", key=f"{key}_order")
+    st.session_state[ss_key] = ordered_labels
 
     by_name = {f.name: f for f in files}
-    missing = [n for n in labels if n not in ordered_labels]
-    if missing:
-        st.warning(f"Fora da ordem: {', '.join(missing)}. Todos os arquivos precisam estar listados.")
-        return []
-
     return [by_name[n] for n in ordered_labels]
 
 
