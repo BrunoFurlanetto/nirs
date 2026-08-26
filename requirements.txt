@@ -4,3 +4,4 @@ pandas
 PyWavelets
 scipy
 streamlit
+plotly
