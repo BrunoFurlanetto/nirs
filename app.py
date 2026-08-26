@@ -347,7 +347,9 @@ with tab_pipeline:
             else:
                 ylim = None
 
-            cond_colors = plt.cm.tab10.colors
+            # Paleta distinta de HbO (#d62728) e HbR (#1f77b4)
+            EVENT_COLORS = ["#38a169", "#805ad5", "#d69e2e", "#0987a0",
+                            "#d53f8c", "#c05621", "#2f855a", "#4a5568"]
             cond_list = list(events.items())
 
             ncols = 4
@@ -356,17 +358,19 @@ with tab_pipeline:
                 cols = st.columns(ncols)
                 for cwidget, ch in zip(cols, row_chs):
                     fig, ax = plt.subplots(figsize=(4, 2.4))
+                    ax.set_axisbelow(True)
                     ax.plot(t_vis, vis_oxy[:, ch], color="#d62728", linewidth=0.4, label="HbO")
                     ax.plot(t_vis, vis_dxy[:, ch], color="#1f77b4", linewidth=0.4, label="HbR")
                     if ylim:
                         ax.set_ylim(ylim)
                     xform = ax.get_xaxis_transform()
                     for ci, (cond_name, onsets) in enumerate(cond_list):
-                        color = cond_colors[ci % len(cond_colors)]
+                        ev_color = EVENT_COLORS[ci % len(EVENT_COLORS)]
                         label_ch = cond_name[0] if cond_name else "?"
                         for onset in onsets:
-                            ax.axvline(onset, color=color, linewidth=0.6, alpha=0.7)
-                            ax.text(onset, 0.98, label_ch, fontsize=5, color=color,
+                            ax.axvline(onset, color=ev_color, linewidth=1.0,
+                                       alpha=0.9, zorder=5)
+                            ax.text(onset, 0.98, label_ch, fontsize=5, color=ev_color,
                                     ha="center", va="top", transform=xform, clip_on=True)
                     ax.set_title(ch_labels[ch], fontsize=9)
                     ax.set_xlabel("Tempo (s)", fontsize=7)
