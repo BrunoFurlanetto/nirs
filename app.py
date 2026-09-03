@@ -90,6 +90,15 @@ with st.sidebar:
     )
     bl_start = st.number_input("Baseline da época — início (s)", value=-2.0, step=0.5)
     bl_end = st.number_input("Baseline da época — fim (s)", value=0.0, step=0.5)
+    st.divider()
+    end_event_letter = st.text_input(
+        "Evento de finalização (letra)",
+        value="",
+        max_chars=1,
+        placeholder="Ex: S",
+        help="Trunca o sinal na primeira ocorrência desta letra (ex: S → S1). "
+             "Vazio = processa o sinal inteiro.",
+    ).strip().upper()
 
 
 # ── Abas principais ───────────────────────────────────────────────────────────
@@ -501,6 +510,32 @@ with tab_pipeline:
                         f"{', '.join(kept_labels)}")
             else:
                 kept_labels = ch_labels
+
+            # ── Evento de finalização: janela por trial ────────────────────────
+            if end_event_letter:
+                from pipeline_spm_end_event import compute_durations_from_end_events
+                auto_durs, events, f_onsets = compute_durations_from_end_events(
+                    events, end_event_letter
+                )
+                if auto_durs is None:
+                    st.warning(
+                        f"Evento de finalização '{end_event_letter}' não encontrado. "
+                        "Processando com durações da tabela."
+                    )
+                else:
+                    # Override das durações: onset → próximo evento de finalização
+                    durations.update(auto_durs)
+                    durations = {k: v for k, v in durations.items() if k in events}
+                    tmin_per_cond = {k: v for k, v in tmin_per_cond.items() if k in events}
+                    baseline_per_cond = {k: v for k, v in baseline_per_cond.items() if k in events}
+                    st.info(
+                        f"Evento de finalização '{end_event_letter}': janelas calculadas "
+                        f"automaticamente por trial. "
+                        + ", ".join(f"**{k}** = {v:.1f}s" for k, v in auto_durs.items())
+                    )
+                if not events:
+                    st.error("Nenhuma condição restante após remover evento de finalização.")
+                    st.stop()
 
             progress.progress(15, text="Baseline initial time...")
             oxy_bl, dxy_bl = baseline_initial_time(oxy, dxy, n_samples=int(baseline_samples))
