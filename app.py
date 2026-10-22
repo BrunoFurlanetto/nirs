@@ -41,6 +41,7 @@ from pipeline_spm import (
 )
 from nirs_concat_ui import render as render_merge
 from nirs_join_inspector import render as render_inspector
+from nirs_event_ui import render as render_event
 
 st.set_page_config(page_title="Pipeline SPM fNIRS", layout="wide")
 
@@ -103,8 +104,8 @@ with st.sidebar:
 
 
 # ── Abas principais ───────────────────────────────────────────────────────────
-tab_juntar, tab_inspect, tab_pipeline = st.tabs([
-    "Juntar arquivos", "Inspecionar emendas", "Pipeline"
+tab_juntar, tab_inspect, tab_pipeline, tab_evento = st.tabs([
+    "Juntar arquivos", "Inspecionar emendas", "Pipeline", "Evento"
 ])
 
 
@@ -459,6 +460,11 @@ with tab_pipeline:
         excluded_idx = [i for i, ex in enumerate(df_ch_edit["Excluir"]) if ex]
         keep_idx = [i for i in range(n_ch) if i not in excluded_idx]
 
+        # Compartilhado com a aba Evento (mesmo DPF, canais e rótulos)
+        st.session_state.pipe_keep_idx = keep_idx
+        st.session_state.pipe_ch_labels = ch_labels
+        st.session_state.pipe_dpf_values = dpf_values if rec["mode"] == "intensity" else None
+
         if excluded_idx:
             excluded_names = [ch_labels[i] for i in excluded_idx]
             st.warning(f"Canais excluídos ({len(excluded_idx)}): {', '.join(excluded_names)}. "
@@ -776,3 +782,9 @@ with tab_pipeline:
 
     else:
         st.info("Suba um arquivo .nirs ou carregue um arquivo mesclado para começar.")
+
+
+# ── Aba: Evento ───────────────────────────────────────────────────────────────
+# Renderizada depois da Pipeline: usa o DPF/canais definidos lá nesta mesma execução.
+with tab_evento:
+    render_event(baseline_samples, wavelet, wavelet_level, state_prefix="event")
