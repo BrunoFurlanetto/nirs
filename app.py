@@ -17,6 +17,7 @@ Vai abrir no navegador automaticamente (localhost:8501).
 """
 
 import os
+import hashlib
 import tempfile
 import numpy as np
 import matplotlib
@@ -40,6 +41,7 @@ from pipeline_spm import (
 )
 from nirs_concat_ui import render as render_merge
 from nirs_join_inspector import render as render_inspector
+from nirs_event_ui import render as render_event
 
 st.set_page_config(page_title="Pipeline SPM fNIRS", layout="wide")
 
@@ -102,8 +104,8 @@ with st.sidebar:
 
 
 # ── Abas principais ───────────────────────────────────────────────────────────
-tab_juntar, tab_inspect, tab_pipeline = st.tabs([
-    "Juntar arquivos", "Inspecionar emendas", "Pipeline"
+tab_juntar, tab_inspect, tab_pipeline, tab_evento = st.tabs([
+    "Juntar arquivos", "Inspecionar emendas", "Pipeline", "Evento"
 ])
 
 
@@ -157,17 +159,26 @@ with tab_pipeline:
 
     if uploaded is not None:
         suffix = os.path.splitext(uploaded.name)[1] or ".nirs"
+        buf = uploaded.getbuffer()
+        file_hash = hashlib.sha256(buf).hexdigest()
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(uploaded.getbuffer())
+            tmp.write(buf)
             tmp_path = tmp.name
 
-        if (not st.session_state.loaded) or st.session_state.get("filename") != uploaded.name:
+        # Recarrega quando o CONTEÚDO muda, não só quando o nome muda.
+        # Antes a guarda era `filename != uploaded.name`: ao editar eventos no
+        # .nirs e subir de novo com o mesmo nome, load_nirs não era chamado e
+        # st.session_state.raw_events ficava com os eventos antigos. O
+        # mapeamento era então aplicado em cima de dados velhos, e o evento
+        # recém-adicionado nunca aparecia na pipeline.
+        if (not st.session_state.loaded) or st.session_state.get("file_hash") != file_hash:
             try:
                 rec = load_nirs(tmp_path)
                 st.session_state.rec = rec
                 st.session_state.raw_events = dict(rec["events"])
                 st.session_state.n_ch = rec["n_ch"]
                 st.session_state.filename = uploaded.name
+                st.session_state.file_hash = file_hash
                 st.session_state.tmp_path = tmp_path
                 st.session_state.distances = compute_channel_distances(tmp_path)
                 st.session_state.dpf_from_file = read_dpf_from_nirs(tmp_path)
@@ -190,16 +201,33 @@ with tab_pipeline:
                 mdf = _pd.read_csv(mapeamento_file, sep=";", dtype=str)
                 mapeamento_file.seek(0)
                 arquivo_rows = mdf[mdf["arquivo"] == uploaded.name]
-                if not arquivo_rows.empty:
+                if arquivo_rows.empty:
+                    st.warning(
+                        f"O CSV de mapeamento não tem nenhuma linha para "
+                        f"**{uploaded.name}** — nenhum rótulo foi aplicado. "
+                        f"Arquivos no CSV: {', '.join(sorted(mdf['arquivo'].unique()))}"
+                    )
+                else:
                     if "ocorrencia" in mdf.columns:
                         mapa = {(r["condicao"], r["ocorrencia"]): r["label"]
                                 for _, r in arquivo_rows.iterrows()}
                         new_ev: dict = {}
+                        sem_linha = []
                         for cond, onsets in raw_ev.items():
                             for i, onset in enumerate(sorted(onsets), 1):
                                 label = mapa.get((cond, str(i)))
                                 if label is not None:
                                     new_ev.setdefault(label, []).append(onset)
+                                else:
+                                    sem_linha.append(f"{cond};{i} (t={float(onset):.1f}s)")
+                        # O mapeamento é lista de permissão: ocorrência sem linha
+                        # no CSV é descartada. Antes isso era silencioso.
+                        if sem_linha:
+                            st.warning(
+                                f"{len(sem_linha)} evento(s) descartado(s) por não terem "
+                                f"linha no CSV de mapeamento: {', '.join(sem_linha)}. "
+                                "Regere o mapeamento no editor se você editou os eventos do .nirs."
+                            )
                         mapped_ev = new_ev
                     else:
                         mapa = {r["condicao"]: r["label"]
@@ -431,6 +459,11 @@ with tab_pipeline:
         )
         excluded_idx = [i for i, ex in enumerate(df_ch_edit["Excluir"]) if ex]
         keep_idx = [i for i in range(n_ch) if i not in excluded_idx]
+
+        # Compartilhado com a aba Evento (mesmo DPF, canais e rótulos)
+        st.session_state.pipe_keep_idx = keep_idx
+        st.session_state.pipe_ch_labels = ch_labels
+        st.session_state.pipe_dpf_values = dpf_values if rec["mode"] == "intensity" else None
 
         if excluded_idx:
             excluded_names = [ch_labels[i] for i in excluded_idx]
@@ -749,3 +782,9 @@ with tab_pipeline:
 
     else:
         st.info("Suba um arquivo .nirs ou carregue um arquivo mesclado para começar.")
+
+
+# ── Aba: Evento ───────────────────────────────────────────────────────────────
+# Renderizada depois da Pipeline: usa o DPF/canais definidos lá nesta mesma execução.
+with tab_evento:
+    render_event(baseline_samples, wavelet, wavelet_level, state_prefix="event")
